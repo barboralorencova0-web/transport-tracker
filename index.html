@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PID Commute & Check-in Tracker</title>
+  
+  <!-- Leaflet CSS pro mapu -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    :root {
+      --bg-dark: #12131C;
+      --bg-card: #1E202E;
+      --accent-blue: #3B82F6;
+      --accent-green: #10B981;
+      --accent-orange: #F59E0B;
+      --accent-red: #EF4444;
+      --text-main: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --border-color: #2D3142;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      background-color: var(--bg-card);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+    .logo-badge {
+      background: linear-gradient(135deg, #3B82F6, #8B5CF6);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+    }
+
+    .user-stats-summary {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .stat-pill {
+      background-color: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      padding: 6px 12px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+    }
+
+    .app-container {
+      display: flex;
+      flex: 1;
+      position: relative;
+      height: calc(100vh - 60px);
+    }
+
+    #map {
+      flex: 1;
+      height: 100%;
+      background: #1e293b;
+    }
+
+    .sidebar {
+      width: 380px;
+      background-color: var(--bg-card);
+      border-left: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      z-index: 999;
+    }
+
+    .nav-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 0.9rem;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      color: var(--accent-blue);
+      border-bottom-color: var(--accent-blue);
+      background-color: rgba(59, 130, 246, 0.05);
+    }
+
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .tab-pane {
+      display: none;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+
+    .active-trip-card {
+      background: linear-gradient(135deg, rgba(59,130,246,0.15), rgba(16,185,129,0.15));
+      border: 1px solid var(--accent-blue);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .trip-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .line-badge {
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 700;
+      color: white;
+      font-size: 0.9rem;
+    }
+    .line-tram { background-color: #EF4444; }
+    .line-bus { background-color: #3B82F6; }
+    .line-train { background-color: #10B981; }
+
+    .btn {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn-primary { background-color: var(--accent-blue); color: white; }
+    .btn-danger { background-color: var(--accent-red); color: white; }
+    .btn-secondary { background-color: rgba(255,255,255,0.1); color: white; }
+
+    .item-card {
+      background-color: rgba(255,255,255,0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .map-controls-top {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 1000;
+      display: flex;
+      gap: 10px;
+    }
+    .search-box {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: white;
+      outline: none;
+      width: 220px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .map-btn-gps {
+      position: absolute;
+      bottom: 24px;
+      right: 400px;
+      z-index: 1000;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background-color: var(--accent-blue);
+      border: none;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    .vehicle-marker {
+      border-radius: 50%;
+      border: 2px solid white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+
+    #status-bar {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      z-index: 1000;
+      background: rgba(30, 32, 46, 0.95);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      <i data-lucide="navigation"></i>
+      PID Commute Tracker
+      <span class="logo-badge">Live Beta</span>
+    </div>
+    <div class="user-stats-summary">
+      <div class="stat-pill">
+        <i data-lucide="award" style="color: #F59E0B;"></i>
+        <span>Lvl <strong id="user-level">1</strong></span>
+      </div>
+      <div class="stat-pill">
+        <i data-lucide="zap" style="color: #3B82F6;"></i>
+        <span><strong id="user-xp">0</strong> XP</span>
+      </div>
+      <div class="stat-pill">
+        <i data-lucide="map-pin" style="color: #10B981;"></i>
+        <span><strong id="user-km">0</strong> km</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <div class="map-controls-top">
+      <input type="text" id="line-filter" class="search-box" placeholder="Hledat linku (např. 22)...">
+    </div>
+
+    <button class="map-btn-gps" id="btn-gps" title="Moje Poloha">
+      <i data-lucide="crosshair"></i>
+    </button>
+
+    <div id="status-bar">Načítání veřejné mapy a PID dat...</div>
+
+    <div id="map"></div>
+
+    <div class="sidebar">
+      <div class="nav-tabs">
+        <button class="tab-btn active" data-tab="tab-checkin">
+          <i data-lucide="radio"></i> Jízda
+        </button>
+        <button class="tab-btn" data-tab="tab-profile">
+          <i data-lucide="user"></i> Profil
+        </button>
+        <button class="tab-btn" data-tab="tab-feed">
+          <i data-lucide="activity"></i> Feed
+        </button>
+      </div>
+
+      <div class="tab-content">
+        <div class="tab-pane active" id="tab-checkin">
+          <div id="active-trip-container">
+            <div style="text-align: center; color: var(--text-muted); padding: 40px 10px;">
+              <i data-lucide="bus" style="width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.5;"></i>
+              <p>Právě nejste přihlášeni v žádném spoji.</p>
+              <p style="font-size: 0.8rem; margin-top: 6px;">Klikněte na jakékoliv vozidlo PID na mapě a udělejte Check-in!</p>
+            </div>
+          </div>
+
+          <h4 style="margin-top: 20px; margin-bottom: 10px; font-size: 0.9rem; color: var(--text-muted);">VYBRANÝ SPOJ</h4>
+          <div id="selected-vehicle-info" class="item-card">
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Vyberte spoj kliknutím na ikonu v mapě.</p>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="tab-profile">
+          <div style="text-align: center; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); margin-bottom: 16px;">
+            <div style="width: 64px; height: 64px; background: #3B82F6; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold;">
+              P
+            </div>
+            <h3>Pražský Cestovatel</h3>
+            <p style="color: var(--accent-orange); font-size: 0.85rem; font-weight: 600;" id="user-title">Šotouš v nácviku</p>
+          </div>
+
+          <h4 style="margin-bottom: 10px; font-size: 0.9rem; color: var(--text-muted);">HISTORIE JÍZD</h4>
+          <div id="trip-history-list"></div>
+
+          <button class="btn btn-secondary" id="btn-reset-data" style="margin-top: 20px;">
+            <i data-lucide="rotate-ccw"></i> Resetovat Uložená Data
+          </button>
+        </div>
+
+        <div class="tab-pane" id="tab-feed">
+          <h4 style="margin-bottom: 10px; font-size: 0.9rem; color: var(--text-muted);">AKTIVITY OSTATNÍCH</h4>
+          <div class="item-card">
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
+              <strong>Martin K.</strong>
+              <span class="line-badge line-tram" style="font-size: 0.7rem; padding: 2px 6px;">22</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Právě udělal check-in na Národní třídě směrem na Vypich.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const GOLEMIO_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NjQwMywiaWF0IjoxNzk0MTk4MDE1LCJleHAiOjExNzk0MTk4MDE1LCJpc3MiOiJnb2xlbWlvIiwianRpIjoiZGU2ZTI4YWEtYTAwYi00MTYyLWIyNGEtNDFmZGUyNzY3OGI3In0.8ZMlzor4UsgTxudkitP8aggQln08ZUvhwHSIpwtyWPk";
+
+    let userData = JSON.parse(localStorage.getItem('pid_user_data')) || {
+      xp: 0, level: 1, km: 0, trips: []
+    };
+
+    let activeTrip = null;
+    let tripInterval = null;
+    let markersMap = {};
+    let currentFilteredLine = "";
+
+    // BEZPEČNÝ MAPOVÝ PODKLAD (CartoDB Positron - bez blokování 403)
+    const map = L.map('map').setView([50.0833, 14.4341], 13);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap, CartoDB'
+    }).addTo(map);
+
+    let userLocationMarker = null;
+    lucide.createIcons();
+    updateUserStatsUI();
+
+    // SPOLENAČENÍ DATA Z PID NAKONFIGUROVÁNÍM CORS PROXY
+    async function fetchPIDVehicles() {
+      const statusBar = document.getElementById('status-bar');
+      const targetUrl = 'https://api.golemio.cz/v2/vehiclepositions';
+      // Spolehlivý veřejný proxy server pro přesměrování z lokálního souboru
+      const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl);
+
+      try {
+        let response;
+        try {
+          response = await fetch(targetUrl, {
+            headers: { 'x-access-token': GOLEMIO_API_KEY }
+          });
+        } catch (e) {
+          response = await fetch(proxyUrl, {
+            headers: { 'x-access-token': GOLEMIO_API_KEY }
+          });
+        }
+
+        if (!response.ok) throw new Error('Chyba při komunikaci s API');
+        const data = await response.json();
+        
+        statusBar.innerText = `● Živá data PID připojena (${data.features.length} vozidel na mapě)`;
+        statusBar.style.color = '#10B981';
+        renderVehicles(data.features);
+
+      } catch (err) {
+        console.warn("Chyba při stahování PID dat:", err);
+        statusBar.innerText = "Načtena živá simulovaná data spojů";
+        statusBar.style.color = '#F59E0B';
+        renderSimulatedVehicles();
+      }
+    }
+
+    // ZÁLOŽNÍ VOZIDLA (Pokud síť/prohlížeč úplně zablokuje spojení)
+    function renderSimulatedVehicles() {
+      const demoData = [
+        { id: "t22", line: "22", headsign: "Vypich", type: "tram", lat: 50.081, lon: 14.411, delay: 0 },
+        { id: "t9", line: "9", headsign: "Spojovací", type: "tram", lat: 50.085, lon: 14.425, delay: 2 },
+        { id: "b136", line: "136", headsign: "Jižní Město", type: "bus", lat: 50.070, lon: 14.450, delay: 5 },
+        { id: "s9", line: "S9", headsign: "Benešov u Prahy", type: "train", lat: 50.083, lon: 14.435, delay: 0 }
+      ];
+      demoData.forEach(v => addVehicleMarker(v.id, v.line, v.headsign, v.delay, v.type, v.lat, v.lon));
+    }
+
+    function renderVehicles(features) {
+      features.forEach(feat => {
+        const props = feat.properties;
+        const coords = feat.geometry.coordinates;
+        if (!coords || coords.length < 2) return;
+
+        const vehicleId = props.vehicle.id || Math.random().toString();
+        const lineName = props.trip.line_name || "?";
+        const headsign = props.trip.headsign || "Neznámý směr";
+        const delayMin = Math.round((props.vehicle.delay || 0) / 60);
+        const type = props.vehicle.type || "bus";
+
+        if (currentFilteredLine && !lineName.toLowerCase().includes(currentFilteredLine.toLowerCase())) {
+          if (markersMap[vehicleId]) {
+            map.removeLayer(markersMap[vehicleId]);
+            delete markersMap[vehicleId];
+          }
+          return;
+        }
+
+        addVehicleMarker(vehicleId, lineName, headsign, delayMin, type, coords[1], coords[0]);
+      });
+    }
+
+    function addVehicleMarker(id, line, headsign, delayMin, type, lat, lon) {
+      let bgClass = "line-bus";
+      if (type === 'tram') bgClass = "line-tram";
+      if (type === 'train') bgClass = "line-train";
+
+      const customIcon = L.divIcon({
+        className: 'custom-vehicle-icon',
+        html: `<div class="vehicle-marker ${bgClass}" style="width: 26px; height: 26px;">${line}</div>`,
+        iconSize: [26, 26]
+      });
+
+      if (markersMap[id]) {
+        markersMap[id].setLatLng([lat, lon]);
+      } else {
+        const marker = L.marker([lat, lon], { icon: customIcon }).addTo(map);
+        marker.bindPopup(`
+          <div style="color: black;">
+            <strong>Linka ${line}</strong> ➔ ${headsign}<br>
+            Zpoždění: ${delayMin > 0 ? '+' + delayMin + ' min' : 'Na čas'}<br><br>
+            <button onclick="selectVehicle('${line}', '${headsign.replace(/'/g, "")}', '${type}')" style="background:#3B82F6; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer;">Vybrat spoj</button>
+          </div>
+        `);
+        markersMap[id] = marker;
+      }
+    }
+
+    window.selectVehicle = function(line, headsign, type) {
+      const container = document.getElementById('selected-vehicle-info');
+      container.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span class="line-badge line-${type}">${line}</span>
+          <strong>Směr: ${headsign}</strong>
+        </div>
+        <button class="btn btn-primary" onclick="startCheckIn('${line}', '${headsign}', '${type}')">
+          <i data-lucide="radio"></i> Nastoupit (Check-in)
+        </button>
+      `;
+      lucide.createIcons();
+    };
+
+    function startCheckIn(line, headsign, type) {
+      if (activeTrip) {
+        alert("Již máte aktivní jízdu!");
+        return;
+      }
+
+      activeTrip = { line, headsign, type, startTime: Date.now(), km: 0, xp: 0 };
+      renderActiveTripCard();
+
+      tripInterval = setInterval(() => {
+        if (!activeTrip) return;
+        activeTrip.km += 0.05;
+        activeTrip.xp += 2;
+        renderActiveTripCard();
+      }, 3000);
+    }
+
+    function renderActiveTripCard() {
+      const container = document.getElementById('active-trip-container');
+      const elapsedSec = Math.floor((Date.now() - activeTrip.startTime) / 1000);
+      const mins = Math.floor(elapsedSec / 60);
+      const secs = elapsedSec % 60;
+
+      container.innerHTML = `
+        <div class="active-trip-card">
+          <div class="trip-header">
+            <span class="line-badge line-${activeTrip.type}">Linka ${activeTrip.line}</span>
+            <span style="font-size:0.8rem; color:var(--accent-green);">● JÍZDA PROBÍHÁ</span>
+          </div>
+          <p style="font-size: 0.9rem; margin-bottom: 12px;">Směr: <strong>${activeTrip.headsign}</strong></p>
+          <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom: 12px; background:rgba(0,0,0,0.2); padding:8px; border-radius:6px;">
+            <span>Čas: <strong>${mins}:${secs < 10 ? '0' : ''}${secs}</strong></span>
+            <span>Ujeto: <strong>${activeTrip.km.toFixed(2)} km</strong></span>
+            <span>XP: <strong>+${activeTrip.xp}</strong></span>
+          </div>
+          <button class="btn btn-danger" onclick="finishCheckIn()">
+            <i data-lucide="square"></i> Vystoupit (Check-out)
+          </button>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function finishCheckIn() {
+      clearInterval(tripInterval);
+      userData.km += activeTrip.km;
+      userData.xp += activeTrip.xp;
+      userData.level = Math.floor(userData.xp / 100) + 1;
+      userData.trips.unshift({
+        line: activeTrip.line,
+        headsign: activeTrip.headsign,
+        km: activeTrip.km.toFixed(2),
+        xp: activeTrip.xp,
+        date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+
+      localStorage.setItem('pid_user_data', JSON.stringify(userData));
+      activeTrip = null;
+      document.getElementById('active-trip-container').innerHTML = `
+        <div style="text-align: center; color: var(--text-muted); padding: 30px 10px;">
+          <p style="color: var(--accent-green); font-weight: bold; margin-bottom: 6px;">Jízda byla úspěšně ukončena!</p>
+          <p style="font-size: 0.8rem;">Body a kilometry byly přičteny do profilu.</p>
+        </div>
+      `;
+      updateUserStatsUI();
+    }
+
+    function updateUserStatsUI() {
+      document.getElementById('user-level').innerText = userData.level;
+      document.getElementById('user-xp').innerText = userData.xp;
+      document.getElementById('user-km').innerText = userData.km.toFixed(1);
+
+      const list = document.getElementById('trip-history-list');
+      if (userData.trips.length === 0) {
+        list.innerHTML = `<p style="color:var(--text-muted); font-size:0.85rem;">Zatím žádné dokončené jízdy.</p>`;
+        return;
+      }
+
+      list.innerHTML = userData.trips.map(t => `
+        <div class="item-card">
+          <div style="display:flex; justify-content:space-between;">
+            <strong>Linka ${t.line} (➔ ${t.headsign})</strong>
+            <span style="font-size:0.75rem; color:var(--text-muted);">${t.date}</span>
+          </div>
+          <p style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Ujeto ${t.km} km • Získáno +${t.xp} XP</p>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('btn-gps').addEventListener('click', () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(position => {
+          const { latitude, longitude } = position.coords;
+          map.setView([latitude, longitude], 15);
+          if (userLocationMarker) map.removeLayer(userLocationMarker);
+          userLocationMarker = L.circleMarker([latitude, longitude], {
+            radius: 8, fillColor: '#3B82F6', color: '#ffffff', weight: 3, opacity: 1, fillOpacity: 0.8
+          }).addTo(map).bindPopup("Tady se právě nacházíte!").openPopup();
+        }, () => { alert("Nepodařilo se získat GPS polohu."); });
+      }
+    });
+
+    document.getElementById('line-filter').addEventListener('input', (e) => {
+      currentFilteredLine = e.target.value.trim();
+      fetchPIDVehicles();
+    });
+
+    document.getElementById('btn-reset-data').addEventListener('click', () => {
+      if (confirm("Opravdu chcete vymazat uložená data?")) {
+        localStorage.removeItem('pid_user_data');
+        userData = { xp: 0, level: 1, km: 0, trips: [] };
+        updateUserStatsUI();
+      }
+    });
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    fetchPIDVehicles();
+    setInterval(fetchPIDVehicles, 10000);
+  </script>
+</body>
+</html>
